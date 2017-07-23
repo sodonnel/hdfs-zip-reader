@@ -42,4 +42,37 @@
     </dependency>
 
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+	  <groupId>org.apache.maven.plugins</groupId>
+	  <artifactId>maven-shade-plugin</artifactId>
+	  <version>2.3</version>
+	  <executions>
+	     <!-- Run shade goal on package phase -->
+            <execution>
+		<phase>package</phase>
+		<goals>
+	          <goal>shade</goal>
+		</goals>
+		<configuration>
+		  <transformers>
+			<!-- add Main-Class to manifest file -->
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+		      <mainClass>com.sodonnel.hadoop.zip.ZipExtractor</mainClass>
+		    </transformer>
+		    <!-- Without this you get No FileSystem for scheme: hdfs when attempting to access HDFS
+			 https://stackoverflow.com/questions/17265002/hadoop-no-filesystem-for-scheme-file
+		    -->
+		    <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+		  </transformers>
+		</configuration>
+	     </execution>
+	  </executions>
+	</plugin>
+
+    </plugins>
+    
+  </build>
 </project>
