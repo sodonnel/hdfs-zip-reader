@@ -36,12 +36,16 @@ The class com.sodonnel.hadoop.zip.ZipExtractor is a simple command line utility 
 
 * The path to the zip file should be in the format:
 
-    file:///User/sodonnell/Downloads/test.zip # Local files
-    hdfs:///user/sodonnell/test.zip           # Files in HDFS
+```
+file:///User/sodonnell/Downloads/test.zip # Local files
+hdfs:///user/sodonnell/test.zip           # Files in HDFS
+```	
 
 * The second parameter is a regex and you should quote it to prevent regex characters affecting the shell - to extact all files pass ".*", but in general you will want to extract certain files by passing their full path, or a regex, eg:
 
-    logs/myservice_hosta.log
+```
+logs/myservice_hosta.log
+```
 
 Or, to get all 'myservice' logs:
 
@@ -80,8 +84,10 @@ TODO - have a look at the com.sodonnel.hadoop.zip.ZipReader class.
 
 * The current implementation of the command line extractor creates a local file with the same name of the entry in the Zip without its path, prefixed with 'extracted_'. If you attempt to extract two files at different paths but with the same name, the second file will overwrite the first, eg:
 
-    patha/test.txt
-    pathb/test.txt
+```
+patha/test.txt
+pathb/test.txt
+```
 
 The extracted file will be called extracted_test.txt. This will be addressed in a later release.
 
