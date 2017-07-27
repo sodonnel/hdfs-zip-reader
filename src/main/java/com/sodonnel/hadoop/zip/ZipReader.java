@@ -23,10 +23,11 @@ import org.apache.hadoop.fs.Path;
 
 public class ZipReader {
   
-  long EOCD_MAX = 1024*64 + 22;
+  // This is the (max comment length in EOCD Record (64k)) + max length of EOCD + length of Zip64 EODC record locator
+  long EOCD_MAX = 1024*64 + 22 + 20;
   long EOCD_MIN = 22;
   
-  int zipEntries;
+  long zipEntries;
   long centralDirectoryOffset;
   
   LinkedHashMap<String, ZipEntry> entries = new LinkedHashMap<String, ZipEntry>();
@@ -52,7 +53,7 @@ public class ZipReader {
     return entries.get(name);
   }
   
-  public int getEntryCount() {
+  public long getEntryCount() {
     return zipEntries;
   }
   
@@ -76,34 +77,71 @@ public class ZipReader {
    */
   public void readEOCD() throws IOException {
     
+    final int ENDHEADERMAGIC = 0x06054b50;
+    final int ZIP64EOCDLOCMAGIC = 0x07064b50;
+
     FileSystem fs = zipPath.getFileSystem(HDFSConf);
 
-    FSDataInputStream is = fs.open(zipPath);
+    FSDataInputStream is = null;
     
-    final int ENDHEADERMAGIC = 0x06054b50;
+    try {
+      is = fs.open(zipPath);
+      is.seek(zipLengthBytes - EOCD_MAX - 1);
+      byte[] buff = new byte[(int)EOCD_MAX];
+      is.readFully(buff, 0, (int)EOCD_MAX);
+      for (int i = 0; i < EOCD_MAX; i++ ) {
+        int x = java.nio.ByteBuffer.wrap(buff, i, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
+        if (x == ENDHEADERMAGIC || x == ZIP64EOCDLOCMAGIC) {
+          if (x == ZIP64EOCDLOCMAGIC) {
+            java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(buff, i + 4, 16).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            // Skip Disk Number
+            bb.getInt();
+            long eocdOffset =  bb.getLong();
+            readZip64EOCD(eocdOffset, is);
+            break;
+          }
+          java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(buff, i + 4, 16).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+
+          short diskNum = bb.getShort();
+          short dirDiskNum = bb.getShort();
+          short dirEntriesOnDisk = bb.getShort();
+          zipEntries = (long)bb.getShort() & 0xFFFFFFFFL;
+
+          int dirSize = bb.getInt();
         
-    is.seek(zipLengthBytes - EOCD_MAX - 1);
-    byte[] buff = new byte[(int)EOCD_MAX];
-    is.readFully(buff, 0, (int)EOCD_MAX);
-    for (int i = 0; i < EOCD_MAX; i++ ) {  
-      int x = java.nio.ByteBuffer.wrap(buff, i, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
-      if (x == ENDHEADERMAGIC) {
-        java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(buff, i + 4, 16).order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        
-        short diskNum = bb.getShort();
-        short dirDiskNum = bb.getShort();
-        short dirEntriesOnDisk = bb.getShort();
-        zipEntries = bb.getShort();
-        int dirSize = bb.getInt();
-        // In ZIPs this is an unsigned int, but Java has signed ints
-        // To we must read this into a long and mask it to remove the sign
-        centralDirectoryOffset = bb.getInt()  & 0xFFFFFFFFL;
-        
-        is.close();
-        break;
+          // In ZIPs this is an unsigned int, but Java has signed ints
+          // To we must read this into a long and mask it to remove the sign
+          centralDirectoryOffset = bb.getInt()  & 0xFFFFFFFFL;
+          break;
+        }
       }
+    } finally {
+      is.close();
+    }
+  }
+
+  private void readZip64EOCD(long offset, FSDataInputStream is) throws IOException {
+    final int ZIP64EOCDMAGIC = 0x06064b50;
+    is.seek(offset);
+    if (Integer.reverseBytes(is.readInt()) != ZIP64EOCDMAGIC) {
+      throw new IOException("The start of the Zip64 EOCD Entry does not have the correct magic number");
     }
     
+    // size of zip64 end of central dir 8 bytes
+    // version made by                 2 bytes
+    // version needed to extract       2 bytes
+    // number of this disk             4 bytes
+    // number of the disk with the
+    // start of the central directory  4 bytes
+    // total number of entries in the
+    // central directory on this disk  8 bytes
+    //
+    //  TOTAL                         28 bytes
+    is.skip(28);
+    zipEntries = Long.reverseBytes(is.readLong());
+    // Size of central directory 8 bytes
+    is.skip(8);
+    centralDirectoryOffset = Long.reverseBytes(is.readLong());
   }
   
   private void validateZip() {
@@ -206,12 +244,17 @@ public class ZipReader {
     
   private void readEntries() throws IOException {
     FileSystem fs = zipPath.getFileSystem(HDFSConf);
+    FSDataInputStream is = null;
 
-    FSDataInputStream is = fs.open(zipPath);
-    is.seek(centralDirectoryOffset);
-    for (int i=0; i<zipEntries; i++) {
-      ZipEntry entry = new ZipEntry(is);
-      entries.put(entry.getFilename(), entry);
+    try {
+      is = fs.open(zipPath);
+      is.seek(centralDirectoryOffset);
+      for (int i=0; i<zipEntries; i++) {
+        ZipEntry entry = new ZipEntry(is);
+        entries.put(entry.getFilename(), entry);
+      }
+    } finally {
+      is.close();
     }
   }    
 

@@ -91,6 +91,3 @@ pathb/test.txt
 
 The extracted file will be called extracted_test.txt. This will be addressed in a later release.
 
-* A Zip with over 65k entries will not be readable in this version - the original Zip format did not support more than 64k entries, until Zip64 was introduced. This will be fixed in a later version
-
-* A Zip over 4GB in size will not be readable - this will be fixed in a later version
