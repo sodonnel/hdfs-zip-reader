@@ -6,17 +6,31 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.Callable;
 
-public class ExtractFileCallable implements Callable<Boolean> {
+public class ExtractFileCallable implements Callable<ExtractFileCallable> {
   
   ZipReader zip;
   ZipEntry  entry;
+  Boolean extracted = false;
+  Exception extractException;
   
   ExtractFileCallable(ZipReader zr, ZipEntry ze) {
     zip   = zr;
     entry = ze;
   }
-  
-  public Boolean call() throws IOException {
+
+  public Boolean getExtracted() {
+    return extracted;
+  }
+
+  public Exception getException() {
+    return extractException;
+  }
+
+  public ZipEntry getZipEntry() {
+    return entry;
+  }
+
+  public ExtractFileCallable call() throws IOException {
     
     InputStream fileData = null;
     FileOutputStream out = null;
@@ -30,16 +44,17 @@ public class ExtractFileCallable implements Callable<Boolean> {
           out.write(buffer, 0, len);
       }
       
-      
     } catch (IOException e) {
-      return false;
+      extracted = false;
+      extractException = e;
+      return this;
     } finally {
       fileData.close();
       out.close();
     }
     
-    
-    return true;
+    extracted = true;
+    return this;
   }
-  
+
 }
