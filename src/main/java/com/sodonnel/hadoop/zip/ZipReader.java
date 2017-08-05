@@ -204,6 +204,10 @@ public class ZipReader {
        * This indicates a ZIP64 archive, and the actual length is stored in the extra field
        * 
        * Format is 2 bytes (0x0001) | 2 bytes (size) | 8 bytes (original size) | 8 bytes (compressed size) 
+       *
+       * Note - the original size and compressed size field are ONLY present if the original header field
+       *        is all ones, ie == -1 as an INT.
+       *
        */
       byte[] buff = new byte[extraLength];
       is.readFully(buff, 0, extraLength);
@@ -212,7 +216,11 @@ public class ZipReader {
         throw new IOException("Entry Header suggests Zip64, but no Zip64 extra data found");
       }
       bb.getShort(); // skip size
-      bb.getLong();  // skip original length
+      // The original size field is optional, so only attempt to read it if
+      // the field in the header was all ones (== -1)
+      if (uncompressedSize == -1) {
+        bb.getLong();  // skip original length
+      }
       compressedSizeZip64 = bb.getLong();
     } else {
       is.skip(extraLength);
