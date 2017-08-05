@@ -56,13 +56,67 @@ public class ZipEntry {
     commentLength = Short.reverseBytes(is.readShort());
     // Disk number where file starts (2), Internal File Attrs (2), External file attrs (4)
     is.skipBytes(8);
+    
     entryOffset = (long)Integer.reverseBytes(is.readInt()) & 0xffffffffL;
-    
     filename = readVariableString(is, filenameLength);
-    // For now, skip 'extra' file
-    is.skip(extraLength);
-    comment = readVariableString(is, commentLength);
     
+    /*
+       We need to hand the extra field, which will contain the entry offsets
+       for Zip64 entries, where their offset is greater than 4GB into the file
+       The spec states that the extra file should contain a value for a given
+       field ONLY if the field in the normal header is 0xffffffff, ie all ones.
+       The field order is guaranteed, but not all fields must be present.
+
+       (ZIP64) 0x0001     2 bytes    Tag for this "extra" block type
+        Size       2 bytes    Size of this "extra" block
+        Original
+        Size       8 bytes    Original uncompressed file size
+        Compressed
+        Size       8 bytes    Size of compressed data
+        Relative Header
+        Offset     8 bytes    Offset of local header record
+        Disk Start
+        Number     4 bytes    Number of the disk on which
+                              this file starts
+    */
+    if (mustHaveZip64Extra() == true) {
+      if (extraLength < 4) {
+        throw new IOException("The entry must have a Zip64 extra field, but it is too short");
+      }
+      if (Short.reverseBytes(is.readShort()) != 0x0001) {
+        throw new IOException("The entry must have a Zip64 extra field, but the header byte is not 0x0001");
+      }
+      is.skip(2);
+      int remainingBytes = extraLength - 4;
+      if ((int)uncompressedSize == 0xffffffff) {
+        uncompressedSize = Long.reverseBytes(is.readLong());
+        remainingBytes -= 8;
+      }
+      if ((int)compressedSize == 0xffffffff) {
+        compressedSize = Long.reverseBytes(is.readLong());
+        remainingBytes -= 8;
+      }
+      if ((int)entryOffset == 0xffffffff) {
+        entryOffset = Long.reverseBytes(is.readLong());
+        remainingBytes -= 8;
+      }
+      is.skip(remainingBytes);
+    } else {
+      is.skipBytes(extraLength);
+    }
+    comment = readVariableString(is, commentLength);
+  }
+
+  private Boolean mustHaveZip64Extra() {
+    if (
+        ((int)uncompressedSize == 0xffffffff) ||
+        ((int)compressedSize == 0xffffffff)   ||
+        ((int)entryOffset == 0xffffffff)
+       ) {
+      return true;
+    } else {
+      return false;
+    }
   }
   
   public short getCompression() {
