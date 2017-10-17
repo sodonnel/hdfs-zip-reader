@@ -10,12 +10,14 @@ public class ExtractFileCallable implements Callable<ExtractFileCallable> {
   
   ZipReader zip;
   ZipEntry  entry;
+  Boolean   extractToOriginalPath = false;
   Boolean extracted = false;
   Exception extractException;
   
-  ExtractFileCallable(ZipReader zr, ZipEntry ze) {
+  ExtractFileCallable(ZipReader zr, ZipEntry ze, Boolean originalLocation) {
     zip   = zr;
     entry = ze;
+    extractToOriginalPath = originalLocation;
   }
 
   public Boolean getExtracted() {
@@ -31,13 +33,23 @@ public class ExtractFileCallable implements Callable<ExtractFileCallable> {
   }
 
   public ExtractFileCallable call() throws IOException {
-    
     InputStream fileData = null;
     FileOutputStream out = null;
     try {
       fileData = zip.getStreamForEntry(entry);
-      out = new FileOutputStream("extracted_"+ new File(entry.getFilename()).getName());
-  
+      
+      File f = new File(entry.getFilename());
+      String dest = "extracted_"+f.getName();
+      
+      if (extractToOriginalPath == true) {
+        File pf = f.getParentFile();
+        if (pf != null) {
+          pf.mkdirs();
+        }
+        dest = entry.getFilename();
+      }
+      out = new FileOutputStream(dest);
+      
       byte[] buffer = new byte[1024];
       int len;
       while ((len = fileData.read(buffer)) != -1) {
@@ -47,6 +59,7 @@ public class ExtractFileCallable implements Callable<ExtractFileCallable> {
     } catch (IOException e) {
       extracted = false;
       extractException = e;
+      e.printStackTrace();
       return this;
     } finally {
       fileData.close();
